@@ -16,3 +16,5 @@ CHIP-8 is an interpreted programming language used on vintage computers like the
 
 - **CHIP-8 Emulation:** Blondechip-8 faithfully replicates the behavior of a CHIP-8 interpreter, enabling users to run classic CHIP-8 games and programs.
 - **Cross-Platform Compatibility:** Being written in Go, Blondechip-8 is platform-independent, ensuring that it can run seamlessly on various operating systems.
+
+<p align="center"><img alt="{};" src="https://github.com/ivanhaaro/Blondechip-8/assets/72946280/fe70d079-bdd1-41ab-b4bf-3b69090a5a14" width = 300></p>

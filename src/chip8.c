@@ -4,13 +4,7 @@
 #include <stdbool.h>
 #include <SDL.h>
 
-// SDL container object
-typedef struct {
-    SDL_Window *window;
-    SDL_Renderer *renderer;
-} sdl_t;
-
-// Emulator configuration object
+// Emulator configuration
 typedef struct {
     uint32_t window_width;
     uint32_t window_height;
@@ -24,11 +18,42 @@ typedef enum {
     PAUSED,
 } emulator_state_t;
 
-//CHIP8 machine 
+// CHIP8 machine 
 typedef struct {
     emulator_state_t state;
 } chip8_t;
 
+// SDL container object
+typedef struct {
+    SDL_Window *window;
+    SDL_Renderer *renderer;
+} sdl_t;
+
+// Initalize CHIP8 machine
+bool init_chip8(chip8_t *chip8) {
+    chip8->state = RUNNING;
+    return true;
+}
+
+// Initialize the configuration of the emulator
+bool init_config(config_t *config, int argc, char **argv) {
+
+    // Set defaults
+    *config = (config_t) {
+        .window_width = 1280,
+        .window_height = 640,
+        .bg_color = 0x0000FF00,
+    };
+
+    //Override defaults from arguments
+    for (int i = 1; i < argc; i++) {
+        (void)argv[i]; // Prevent complier error
+    }
+
+    return true;
+}
+
+// Initialize SDL
 bool init_sdl(sdl_t *sdl, config_t *config) {
 
     if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER) != 0) {
@@ -52,23 +77,7 @@ bool init_sdl(sdl_t *sdl, config_t *config) {
     return true;
 }
 
-bool set_up_config(config_t *config, int argc, char **argv) {
-
-    // Set defaults
-    *config = (config_t) {
-        .window_width = 1280,
-        .window_height = 640,
-        .bg_color = 0x0000FF00,
-    };
-
-    //Override defaults from arguments
-    for (int i = 1; i < argc; i++) {
-        (void)argv[i]; // Prevent complier error
-    }
-
-    return true;
-}
-
+// Clean all SDL objects
 void final_cleanup(sdl_t sdl) {
     SDL_DestroyRenderer(sdl.renderer);
     SDL_DestroyWindow(sdl.window);
@@ -106,42 +115,29 @@ void handle_input(chip8_t *chip8){
     }
 }
 
-bool init_chip8(chip8_t *chip8) {
-    chip8->state = RUNNING;
-    return true;
-}
-
 int main(int argc, char **argv) {
 
-    // Initialize the configuration of the emulator
-    config_t config = {0}; 
-    if(!set_up_config(&config, argc, argv)) exit(EXIT_FAILURE);
-
-    // Initialize SDL 
-    sdl_t sdl = {0};
-    if(!init_sdl(&sdl, &config)) exit(EXIT_FAILURE);
-
-    // Initalize CHIP8 machine
     chip8_t chip8 = {0};
     if(!init_chip8(&chip8)) exit(EXIT_FAILURE);
 
-    // Initial screen clear
+    config_t config = {0}; 
+    if(!init_config(&config, argc, argv)) exit(EXIT_FAILURE);
+
+    sdl_t sdl = {0};
+    if(!init_sdl(&sdl, &config)) exit(EXIT_FAILURE);
+
     clear_screen(sdl, config);
 
     // Main emulator loop
     while(chip8.state != QUIT) {
-        // Handle user input
         handle_input(&chip8);
         
         // Delay for approximately 60Hz (16.67ms)
         SDL_Delay(16);
 
-        // Update window with changes
         update_screen(sdl);
     }
 
-    // Final cleanup
     final_cleanup(sdl);
-
     exit(EXIT_SUCCESS);
 }

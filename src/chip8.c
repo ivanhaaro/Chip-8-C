@@ -18,12 +18,24 @@ typedef enum {
     PAUSED,
 } emulator_state_t;
 
+// CHIP8 instruction format
+typedef struct {
+    uint16_t opcode;
+    uint16_t NNN;       // 12 bit address/constant
+    uint8_t NN;         // 8 bit constant
+    uint8_t N;          // 4 bit constant
+    uint8_t X;          // 4 bit register identifier
+    uint8_t Y;          // 4 bit register identifier
+
+} instruction_t;
+
 // CHIP8 machine 
 typedef struct {
     emulator_state_t state;
     uint8_t ram[4096];      // Random access memory
     bool display[64*32];    // Original CHIP8 resolution 
     uint16_t stack[12];     // Subrutine stacks
+    uint16_t *stack_ptr;    // Stack pointer
     uint8_t V[16];          // Registers V0 - VF
     uint16_t I;             // Index memory register
     uint16_t PC;            // Program counter
@@ -31,6 +43,7 @@ typedef struct {
     uint8_t sound_timer;    // Decrements at 60Hz and plays a tone when > 0
     bool keypad[16];        // Hexadecimal keypad 0x0 - 0xF
     const char *rom_name;   // Currently running ROM
+    instruction_t inst;     // Currently executing instruction
 } chip8_t;
 
 // SDL container object
@@ -96,6 +109,7 @@ bool init_chip8(chip8_t *chip8, const char *rom_name) {
     chip8->state = RUNNING;
     chip8->PC = entry_point; 
     chip8->rom_name = rom_name;
+    chip8->stack_ptr = &chip8->stack[0];
 
     return true;
 }
@@ -106,7 +120,7 @@ bool init_config(config_t *config, int argc, char **argv) {
     *config = (config_t) {
         .window_width = 1280,
         .window_height = 640,
-        .bg_color = 0x0000FF00,
+        .bg_color = 0x000000FF,
     };
 
     //Override defaults from arguments
@@ -198,6 +212,94 @@ void handle_input(chip8_t *chip8){
     }
 }
 
+#ifdef DEBUG
+void print_debug_info(chip8_t *chip8) {
+
+    printf("Address: 0x%04X Opcode: 0x%04X Desc: ", chip8->PC-2, chip8->inst.opcode);
+
+    switch ((chip8->inst.opcode >> 12) & 0x0F) {
+        case 0x0:
+            if(chip8->inst.NN == 0xE0) {
+                // 0x0E0 Clear the screen
+                printf("Clear screen\n");
+
+            } else if (chip8->inst.NN == 0xEE) {
+                // 0x00EE Return from subrutine
+                //  Set program counter to last address on subrutine stack ("pop" it off the stack)
+                //  so that next opcode will be gotten from that address
+                printf("Return from subrutine address 0x%04X\n", *(chip8->stack_ptr-1));
+            } else {
+                printf("Uninmplemented Opcode\n");
+            }
+            break;
+
+        case 0x02:
+            // 0x02NNN: Call subrutine at NNN
+            // Store current address to return to on subrutine stack ("push" it on the stack)
+            // and set program counter to subrutine address so that the next opcode is gotten from there
+            *chip8->stack_ptr = chip8->PC;
+            chip8->PC = chip8->inst.NNN;
+            break;
+
+        case 0x0A:
+            //  0x0ANN: Set index register I to NNN
+            printf("Set I to NNN (0x%04X)\n", chip8->inst.NNN);
+            break;
+
+        default:
+            printf("Uninmplemented Opcode\n");
+            break; // Unimplemented or invalid opcode
+    }
+}
+#endif
+
+// Emulate CHIP8 instructions
+void emulate_instruction(chip8_t *chip8) {
+    chip8->inst.opcode = (chip8->ram[chip8->PC] << 8) | chip8->ram[chip8->PC+1]; // Get next opcode form RAM
+    chip8->PC += 2; // Increment program counter for next opcode
+
+    // Fill out instruction format
+    chip8->inst.NNN = chip8->inst.opcode & 0x0FFF;
+    chip8->inst.NN = chip8->inst.opcode & 0x0FF;
+    chip8->inst.N = chip8->inst.opcode & 0x0F;
+    chip8->inst.X = (chip8->inst.opcode >> 8) & 0x0F;
+    chip8->inst.Y = (chip8->inst.opcode >> 4) & 0x0F;
+
+#ifdef DEBUG
+    print_debug_info(chip8);
+#endif
+
+    // Emulate opcode
+    switch ((chip8->inst.opcode >> 12) & 0x0F) {
+        case 0x0:
+            if(chip8->inst.NN == 0xE0) {
+                // 0x0E0 Clear the screen
+                memset(&chip8->display[0], false, sizeof chip8->display);
+
+            } else if (chip8->inst.NN == 0xEE) {
+                // 0x00EE Return from subrutine
+                //  Set program counter to last address on subrutine stack ("pop" it off the stack)
+                //  so that next opcode will be gotten from that address
+            }
+            break;
+
+        case 0x02:
+            // 0x02NNN: Call subrutine at NNN
+            // Store current address to return to on subrutine stack ("push" it on the stack)
+            // and set program counter to subrutine address so that the next opcode is gotten from there
+            *chip8->stack_ptr = chip8->PC;
+            chip8->PC = chip8->inst.NNN;
+            break;
+
+        case 0x0A:
+            //  0x0ANN: Set index register I to NNN
+            chip8->I = chip8->inst.NNN;
+            break;
+        default:
+            break; // Unimplemented or invalid opcode
+    }
+}
+
 int main(int argc, char **argv) {
 
     if(argc < 2) {
@@ -222,6 +324,8 @@ int main(int argc, char **argv) {
         handle_input(&chip8);
 
         if(chip8.state == PAUSED) continue;
+
+        emulate_instruction(&chip8);
         
         // Delay for approximately 60Hz (16.67ms)
         SDL_Delay(16);

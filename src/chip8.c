@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <time.h>
 #include <SDL.h>
 
 // Emulator configuration
@@ -221,7 +222,15 @@ void update_screen(const sdl_t sdl, const config_t config, const chip8_t chip8) 
     SDL_RenderPresent(sdl.renderer);
 }
 
+// Handle user input
+// CHIP8 Keypad QWERTY 
+// 123C         1234
+// 456D         qwer   
+// 789E         asdf
+// A0BF         zxcv
+
 void handle_input(chip8_t *chip8){
+
     SDL_Event event;
 
     while(SDL_PollEvent(&event)) {
@@ -250,8 +259,60 @@ void handle_input(chip8_t *chip8){
                             puts("====RESUME=====");
                         } 
                         return;
+
+                    // Map qwerty keys to CHIP8 keypad
+                    case SDLK_1: chip8->keypad[0x1] = true; break;
+                    case SDLK_2: chip8->keypad[0x2] = true; break;
+                    case SDLK_3: chip8->keypad[0x3] = true; break;
+                    case SDLK_4: chip8->keypad[0xC] = true; break;
+
+                    case SDLK_q: chip8->keypad[0x4] = true; break;
+                    case SDLK_w: chip8->keypad[0x5] = true; break;
+                    case SDLK_r: chip8->keypad[0x6] = true; break;
+                    case SDLK_t: chip8->keypad[0xD] = true; break;
+
+                    case SDLK_a: chip8->keypad[0x7] = true; break;
+                    case SDLK_s: chip8->keypad[0x8] = true; break;
+                    case SDLK_d: chip8->keypad[0x9] = true; break;
+                    case SDLK_f: chip8->keypad[0xE] = true; break;
+
+                    case SDLK_z: chip8->keypad[0xA] = true; break;
+                    case SDLK_x: chip8->keypad[0x0] = true; break;
+                    case SDLK_c: chip8->keypad[0xB] = true; break;
+                    case SDLK_v: chip8->keypad[0xF] = true; break;
+
+                    default:break;
                     
                 }
+                break;
+
+            case SDL_KEYUP:
+
+                switch(event.key.keysym.sym) {
+                    // Map qwerty keys to CHIP8 keypad
+                    case SDLK_1: chip8->keypad[0x1] = false; break;
+                    case SDLK_2: chip8->keypad[0x2] = false; break;
+                    case SDLK_3: chip8->keypad[0x3] = false; break;
+                    case SDLK_4: chip8->keypad[0xC] = false; break;
+
+                    case SDLK_q: chip8->keypad[0x4] = false; break;
+                    case SDLK_w: chip8->keypad[0x5] = false; break;
+                    case SDLK_r: chip8->keypad[0x6] = false; break;
+                    case SDLK_t: chip8->keypad[0xD] = false; break;
+
+                    case SDLK_a: chip8->keypad[0x7] = false; break;
+                    case SDLK_s: chip8->keypad[0x8] = false; break;
+                    case SDLK_d: chip8->keypad[0x9] = false; break;
+                    case SDLK_f: chip8->keypad[0xE] = false; break;
+
+                    case SDLK_z: chip8->keypad[0xA] = false; break;
+                    case SDLK_x: chip8->keypad[0x0] = false; break;
+                    case SDLK_c: chip8->keypad[0xB] = false; break;
+                    case SDLK_v: chip8->keypad[0xF] = false; break;
+
+                    default: break;
+                }
+                break;
 
             default:
                 break;
@@ -421,6 +482,12 @@ void print_debug_info(chip8_t *chip8) {
             chip8->inst.NNN, chip8->V[0x0], chip8->V[0x0] + chip8->inst.NNN);
             break;
 
+        case 0x0C:
+            // 0xCXNN: Sets V[X] to the result of a bitwise AND operation between a random number (0 to 255) and NN
+            printf("Set V%X = (rand() %% 256) & NN (0x%04X)\n",
+            chip8->inst.X, chip8->inst.NN);
+            break;
+
         case 0x0D:
             // 0XDXYN: Draw N-height sprite at coords X,Y; Read from memory location I
             // Screen pixels are XOR'd with sprite bits
@@ -429,6 +496,20 @@ void print_debug_info(chip8_t *chip8) {
                     "from memory location I (0x%04X). Set VF = 1 if any pixels are turned off.\n"
                     , chip8->inst.N, chip8->inst.X, chip8->V[chip8->inst.X], chip8->inst.Y, 
                     chip8->V[chip8->inst.Y], chip8->I);
+            break;
+
+        case 0x0E:
+
+            if(chip8->inst.NN == 0x9E) {
+                // 0xEX9E: Skip next instruction if key in V[X] is pressed
+                printf("Skip next instruction if key in V%X (0x%02X) is pressed; Keypad value: %d\n",
+                chip8->inst.X, chip8->V[chip8->inst.X], chip8->keypad[chip8->V[chip8->inst.X]]);
+
+            } else if(chip8->inst.NN == 0xA1) {
+                // 0xEXA1: Skip next instruction if key in V[X] is not pressed
+                printf("Skip next instruction if key in V%X (0x%02X) is not pressed; Keypad value: %d\n",
+                chip8->inst.X, chip8->V[chip8->inst.X], chip8->keypad[chip8->V[chip8->inst.X]]);
+            }
             break;
 
         default:
@@ -602,6 +683,11 @@ void emulate_instruction(chip8_t *chip8, const config_t config) {
             chip8->PC = chip8->inst.NNN + chip8->V[0x0];
             break;
 
+        case 0x0C:
+            // 0xCXNN: Sets V[X] to the result of a bitwise AND operation between a random number (0 to 255) and NN
+            chip8->V[chip8->inst.X] = (rand() % 256) & chip8->inst.NN;
+            break;
+
         case 0x0D:
             // 0XDXYN: Draw N-height sprite at coords X,Y; Read from memory location I
             // Screen pixels are XOR'd with sprite bits
@@ -642,6 +728,70 @@ void emulate_instruction(chip8_t *chip8, const config_t config) {
 
             break;
 
+        case 0x0E:
+
+            if(chip8->inst.NN == 0x9E) {
+                // 0xEX9E: Skip next instruction if key in V[X] is pressed
+                if(chip8->keypad[chip8->V[chip8->inst.X]])
+                    chip8->PC += 2;
+
+            } else if(chip8->inst.NN == 0xA1) {
+                // 0xEXA1: Skip next instruction if key in V[X] is not pressed
+                if(!chip8->keypad[chip8->V[chip8->inst.X]])
+                    chip8->PC += 2;
+            }
+            break;
+
+        case 0x0F:
+        
+            switch(chip8->inst.NN) {
+
+                case 0x07:
+                    break;
+
+                case 0x0A:
+                    //0xFX0A: A key press is awaited, and then stored in VX (blocking operation, all instruction halted until next key event)
+                    bool any_key_pressed = false;
+                    for(uint8_t i = 0; i < sizeof chip8->keypad; i++) {
+                        if(chip8->keypad[i]) {
+                            chip8->V[chip8->inst.X] = i;
+                            any_key_pressed = true;
+                            break;
+                        }
+                    }
+
+                    if(!any_key_pressed) {
+                        chip8->PC -= 2; // If not key has been pressed yet, keep executing current instruction 
+                    }
+
+                    break;
+
+                case 0x15:
+                    break;
+
+                case 0x18:
+                    break;
+
+                case 0x1E:
+                    break;
+
+                case 0x29:
+                    break;
+
+                case 0x33:
+                    break;
+
+                case 0x55:
+                    break;
+
+                case 0x65:
+                    break;
+
+                default:
+                    break; // Uinmplemented/Wrong opcode 
+            }
+            break;
+
         default:
             break; // Unimplemented or invalid opcode
     }
@@ -665,6 +815,8 @@ int main(int argc, char **argv) {
     if(!init_sdl(&sdl, &config)) exit(EXIT_FAILURE);
 
     clear_screen(sdl, config);
+
+    srand(time(NULL));
 
     // Main emulator loop
     while(chip8.state != QUIT) {

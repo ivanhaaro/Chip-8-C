@@ -512,6 +512,68 @@ void print_debug_info(chip8_t *chip8) {
             }
             break;
 
+        case 0x0F:
+        
+            switch(chip8->inst.NN) {
+
+                case 0x07:
+                    // 0xFX07: Sets VX to the value of the delay timer.
+                    printf("Set V%X = delay timer value (0x%02X)\n", chip8->inst.X, chip8->delay_timer);
+                    break;
+
+                case 0x0A:
+                    //0xFX0A: A key press is awaited, and then stored in VX (blocking operation, all instruction halted until next key event)
+                    printf("Await until a key is pressed; Store key in V%X\n", chip8->inst.X);                    
+                    break;
+
+                case 0x15:
+                    // 0xFX15: Sets the delay timer to VX
+                    printf("Set delay timer value = V%X (0x%02X)\n", chip8->inst.X, chip8->V[chip8->inst.X]);
+                    break;
+
+                case 0x18:
+                    // 0xFX18: Sets the sound timer to VX.
+                    printf("Set sound timer value = V%X (0x%02X)\n", chip8->inst.X, chip8->V[chip8->inst.X]);
+                    break;
+
+                case 0x1E:
+                    // 0xFX1E: Adds VX to I. VF is not affected.
+                    printf("I (0x%04X) += V%X (0x%04X); Result (I): 0x%04X\n", 
+                    chip8->I, chip8->inst.X, chip8->V[chip8->inst.X], chip8->I + chip8->V[chip8->inst.X]);
+                    break;
+
+                case 0x29:
+                    // 0xFX29: Sets I to the location of the sprite for the character in VX. Characters 0-F (in hexadecimal) are represented by a 4x5 font.
+                    printf("Set I to sprite location in memory for character in V%X (0x%02X); Result (*5) = (0x%02X)\n",
+                    chip8->inst.X, chip8->V[chip8->inst.X], chip8->V[chip8->inst.X] * 5);
+                    break;
+
+                case 0x33:
+                    // 0xFX33: Stores the binary-coded decimal representation of VX
+                    // with the hundreds digit in memory at location in I, the tens digit at location I+1, and the ones digit at location I+2.
+                    printf("Store BCD representation of V%X (0x%02X) at memory from I (0x%04X)\n", 
+                    chip8->inst.X, chip8->V[chip8->inst.X], chip8->I);               
+                    break;
+
+                case 0x55:
+                    // 0xFX55: Stores from V0 to VX (including VX) in memory, starting at address I. 
+                    // The offset from I is increased by 1 for each value written, but I itself is left unmodified.
+                    printf("Resgister dump V0-V%X (0x%02X) inclusive at memory from I (0x%04X)\n", 
+                    chip8->inst.X, chip8->V[chip8->inst.X], chip8->I);
+                    break;
+
+                case 0x65:
+                    // 0xFX65: Fills from V0 to VX (including VX) with values from memory, starting at address I. 
+                    // The offset from I is increased by 1 for each value read, but I itself is left unmodified.
+                    printf("Resgister load V0-V%X (0x%02X) inclusive at memory from I (0x%04X)\n", 
+                    chip8->inst.X, chip8->V[chip8->inst.X], chip8->I);
+                    break;
+
+                default:
+                    break; // Uinmplemented/Wrong opcode 
+            }
+            break;
+
         default:
             printf("Uninmplemented Opcode\n");
             break; // Unimplemented or invalid opcode
@@ -641,7 +703,7 @@ void emulate_instruction(chip8_t *chip8, const config_t config) {
                     chip8->V[0xF] = carry;
                     break;
 
-                case 0x06:
+                case 0x6:
                     //0x8XY6: Shifts V[X] to the right by 1, then stores the least significant bit of V[X] prior to the shift into V[F].
                     chip8->V[0xF] = chip8->V[chip8->inst.X] & 0x1;
                     chip8->V[chip8->inst.X] >>= 1;
@@ -747,6 +809,8 @@ void emulate_instruction(chip8_t *chip8, const config_t config) {
             switch(chip8->inst.NN) {
 
                 case 0x07:
+                    // 0xFX07: Sets VX to the value of the delay timer.
+                    chip8->V[chip8->inst.X] = chip8->delay_timer;
                     break;
 
                 case 0x0A:
@@ -759,32 +823,53 @@ void emulate_instruction(chip8_t *chip8, const config_t config) {
                             break;
                         }
                     }
-
-                    if(!any_key_pressed) {
-                        chip8->PC -= 2; // If not key has been pressed yet, keep executing current instruction 
-                    }
-
+                    // If not key has been pressed yet, keep executing current instruction 
+                    if(!any_key_pressed) chip8->PC -= 2; 
                     break;
 
                 case 0x15:
+                    // 0xFX15: Sets the delay timer to VX
+                    chip8->delay_timer = chip8->V[chip8->inst.X];
                     break;
 
                 case 0x18:
+                    // 0xFX18: Sets the sound timer to VX.
+                    chip8->sound_timer = chip8->V[chip8->inst.X];
                     break;
 
                 case 0x1E:
+                    // 0xFX1E: Adds VX to I. VF is not affected.
+                    chip8->I += chip8->V[chip8->inst.X];
                     break;
 
                 case 0x29:
+                    // 0xFX29: Sets I to the location of the sprite for the character in VX. Characters 0-F (in hexadecimal) are represented by a 4x5 font.
+                    chip8->I = chip8->V[chip8->inst.X] * 5;
                     break;
 
                 case 0x33:
+                    // 0xFX33: Stores the binary-coded decimal representation of VX-
+                    // With the hundreds digit in memory at location in I, the tens digit at location I+1, and the ones digit at location I+2.
+                    uint8_t bcd = chip8->V[chip8->inst.X];
+                    chip8->ram[chip8->I + 2] = bcd % 10;
+                    bcd /= 10;
+                    chip8->ram[chip8->I + 1] = bcd % 10;
+                    bcd /= 10;
+                    chip8->ram[chip8->I] = bcd % 10;                    
                     break;
 
                 case 0x55:
+                    // 0xFX55: Stores from V0 to VX (including VX) in memory, starting at address I. 
+                    // The offset from I is increased by 1 for each value written, but I itself is left unmodified.
+                    for(int i = 0; i <= chip8->inst.X; i++)
+                        chip8->ram[chip8->I + i] = chip8->V[i];
                     break;
 
                 case 0x65:
+                    // 0xFX65: Fills from V0 to VX (including VX) with values from memory, starting at address I. 
+                    // The offset from I is increased by 1 for each value read, but I itself is left unmodified.
+                    for(int i = 0; i <= chip8->inst.X; i++)
+                        chip8->V[i] = chip8->ram[chip8->I + i];
                     break;
 
                 default:
